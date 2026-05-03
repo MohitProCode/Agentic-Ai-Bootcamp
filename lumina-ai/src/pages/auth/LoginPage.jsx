@@ -1,6 +1,8 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import useStore from '../../store/useStore'
+import { luminaApi } from '../../api/luminaApi'
+import { mapAuthUserToStore } from '../../api/mappers'
 
 // ─── Login Page ───────────────────────────────
 const LoginPage = () => {
@@ -13,39 +15,103 @@ const LoginPage = () => {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [ssoMsg, setSsoMsg] = useState('')
+  const [loading, setLoading] = useState(false)
+  const DEMO_PASSWORD = 'LuminaDemo#2026'
 
-  const handleSubmit = (e) => {
+  const ensureAccountSession = async ({ fullName, userEmail }) => {
+    try {
+      return await luminaApi.login({ email: userEmail, password: DEMO_PASSWORD })
+    } catch {
+      try {
+        await luminaApi.signup({
+          full_name: fullName,
+          email: userEmail,
+          password: DEMO_PASSWORD,
+          invite_code: 'LUMINA-2024',
+        })
+      } catch (signupError) {
+        if (signupError?.status !== 409) throw signupError
+      }
+      return luminaApi.login({ email: userEmail, password: DEMO_PASSWORD })
+    }
+  }
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
     if (!email.trim()) { setError('Please enter your email address.'); return }
     if (!password.trim()) { setError('Please enter your password.'); return }
+    setLoading(true)
     setError('')
-    // Detect admin by email for demo purposes
-    const isAdmin = email.toLowerCase().includes('admin')
-    login({
-      name: email.split('@')[0] || 'Learner',
-      email,
-      role: isAdmin ? 'admin' : 'student',
-      isAuthenticated: true
-    })
-    navigate('/dashboard')
-  }
-
-  const loginAsUser = () => {
-    login({ name: 'Alex', email: 'alex.j@example.com', role: 'student', isAuthenticated: true })
-    navigate('/dashboard')
-  }
-
-  const loginAsAdmin = () => {
-    login({ name: 'Admin', email: 'admin@lumina.ai', role: 'admin', isAuthenticated: true })
-    navigate('/dashboard')
-  }
-
-  const handleSSO = (provider) => {
-    setSsoMsg(`Redirecting to ${provider}…`)
-    setTimeout(() => {
-      login({ name: 'Demo User', email: `demo@${provider.toLowerCase()}.com`, isAuthenticated: true })
+    try {
+      const authResponse = await luminaApi.login({ email, password })
+      const user = mapAuthUserToStore(authResponse?.user)
+      login(user, authResponse?.access_token || null)
       navigate('/dashboard')
-    }, 1200)
+    } catch (apiError) {
+      setError(apiError?.message || 'Unable to sign in right now. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loginAsUser = async () => {
+    setLoading(true)
+    setError('')
+    setSsoMsg('Preparing student demo account...')
+    try {
+      const authResponse = await ensureAccountSession({
+        fullName: 'Alex Johnson',
+        userEmail: 'alex.j@example.com',
+      })
+      const user = mapAuthUserToStore(authResponse?.user)
+      login({ ...user, role: 'student' }, authResponse?.access_token || null)
+      navigate('/dashboard')
+    } catch (apiError) {
+      setError(apiError?.message || 'Unable to access student demo right now.')
+    } finally {
+      setLoading(false)
+      setSsoMsg('')
+    }
+  }
+
+  const loginAsAdmin = async () => {
+    setLoading(true)
+    setError('')
+    setSsoMsg('Preparing admin demo account...')
+    try {
+      const authResponse = await ensureAccountSession({
+        fullName: 'Lumina Admin',
+        userEmail: 'admin@lumina.ai',
+      })
+      const user = mapAuthUserToStore(authResponse?.user)
+      login({ ...user, role: 'admin' }, authResponse?.access_token || null)
+      navigate('/dashboard')
+    } catch (apiError) {
+      setError(apiError?.message || 'Unable to access admin demo right now.')
+    } finally {
+      setLoading(false)
+      setSsoMsg('')
+    }
+  }
+
+  const handleSSO = async (provider) => {
+    setLoading(true)
+    setError('')
+    setSsoMsg(`Connecting ${provider} demo identity...`)
+    try {
+      const authResponse = await ensureAccountSession({
+        fullName: `${provider} Learner`,
+        userEmail: `demo.${provider.toLowerCase()}@lumina.ai`,
+      })
+      const user = mapAuthUserToStore(authResponse?.user)
+      login(user, authResponse?.access_token || null)
+      navigate('/dashboard')
+    } catch (apiError) {
+      setError(apiError?.message || `Unable to continue with ${provider}.`)
+    } finally {
+      setLoading(false)
+      setSsoMsg('')
+    }
   }
 
   const handleForgotPassword = (e) => {
@@ -210,8 +276,8 @@ const LoginPage = () => {
                 <i className="fa-solid fa-circle-exclamation" /> {error}
               </p>
             )}
-            <button type="submit" className="w-full primary-btn rounded-lg py-2.5 px-4 text-sm font-semibold text-white mt-2">
-              Sign In
+            <button type="submit" disabled={loading} className="w-full primary-btn rounded-lg py-2.5 px-4 text-sm font-semibold text-white mt-2">
+              {loading ? 'Signing In...' : 'Sign In'}
             </button>
           </form>
 

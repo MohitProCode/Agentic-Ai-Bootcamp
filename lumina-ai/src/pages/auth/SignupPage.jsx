@@ -1,6 +1,21 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import useStore from '../../store/useStore'
+import { luminaApi } from '../../api/luminaApi'
+import { mapAuthUserToStore } from '../../api/mappers'
+
+const roleOptions = ['Software Engineer', 'Data Scientist', 'Product Designer', 'DevOps Engineer']
+const experienceLevels = ['Beginner', 'Intermediate', 'Advanced']
+const learningStyles = ['Project-based (Hands-on)', 'Video Lectures & Quizzes', 'Reading & Documentation']
+const topicOptions = [
+  'React & Next.js',
+  'TypeScript',
+  'Node.js',
+  'Python',
+  'System Design',
+  'Data Structures',
+  'SQL',
+]
 
 // ─── Signup Page ──────────────────────────────
 // Exact match: 9-Personalised Learning - Signup.html
@@ -9,40 +24,118 @@ const SignupPage = () => {
   const login = useStore(s => s.login)
 
   const [form, setForm] = useState({
-    fullName: '', email: '', password: '', cohortCode: '', agreed: false
+    fullName: '',
+    email: '',
+    password: '',
+    cohortCode: '',
+    targetRole: 'Software Engineer',
+    experienceLevel: 'Beginner',
+    weeklyHours: 12,
+    learningStyle: 'Project-based (Hands-on)',
+    contentLanguage: 'English (US)',
+    focusTopics: ['React & Next.js', 'TypeScript'],
+    agreed: false,
   })
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
   const [ssoMsg, setSsoMsg] = useState('')
+  const [loading, setLoading] = useState(false)
+  const DEMO_PASSWORD = 'LuminaDemo#2026'
 
   const update = (key, val) => setForm(f => ({ ...f, [key]: val }))
+  const toggleFocusTopic = (topic) => {
+    setForm((prev) => {
+      const alreadySelected = prev.focusTopics.includes(topic)
+      return {
+        ...prev,
+        focusTopics: alreadySelected
+          ? prev.focusTopics.filter((item) => item !== topic)
+          : [...prev.focusTopics, topic],
+      }
+    })
+  }
+  const ensureAccountSession = async ({ fullName, userEmail }) => {
+    try {
+      return await luminaApi.login({ email: userEmail, password: DEMO_PASSWORD })
+    } catch {
+      try {
+        await luminaApi.signup({
+          full_name: fullName,
+          email: userEmail,
+          password: DEMO_PASSWORD,
+          invite_code: 'LUMINA-2024',
+        })
+      } catch (signupError) {
+        if (signupError?.status !== 409) throw signupError
+      }
+      return luminaApi.login({ email: userEmail, password: DEMO_PASSWORD })
+    }
+  }
 
-  const handleSignup = (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault()
+    const weeklyHours = Number(form.weeklyHours)
     if (!form.fullName.trim()) { setError('Please enter your full name.'); return }
     if (!form.email.trim()) { setError('Please enter your email address.'); return }
     if (!form.password.trim()) { setError('Please enter a password.'); return }
+    if (!Number.isFinite(weeklyHours) || weeklyHours <= 0) { setError('Please enter valid weekly study hours.'); return }
+    if (!form.focusTopics.length) { setError('Select at least one focus topic for adaptive quizzes.'); return }
     if (!form.agreed) { setError('Please accept the Terms of Service.'); return }
+    setLoading(true)
     setError('')
-    login({
-      name: form.fullName.split(' ')[0] || 'User',
-      fullName: form.fullName,
-      email: form.email,
-      cohort: form.cohortCode || 'Bootcamp Pro',
-      role: 'student',
-      isAuthenticated: true
-    })
-    navigate('/onboarding/goals')
-  }
+    try {
+      const userProfile = {
+        targetRole: form.targetRole,
+        experienceLevel: form.experienceLevel,
+        weeklyHours: Math.max(1, Math.round(weeklyHours)),
+        learningStyle: form.learningStyle,
+        contentLanguage: form.contentLanguage,
+        focusTopics: form.focusTopics,
+      }
 
-  const handleSSO = (provider) => {
-    setSsoMsg(`Redirecting to ${provider}…`)
-    setTimeout(() => {
-      login({ name: `${provider} User`, email: `user@${provider.toLowerCase()}.com`, role: 'student', isAuthenticated: true })
+      const authResponse = await luminaApi.signup({
+        full_name: form.fullName,
+        email: form.email,
+        password: form.password,
+        invite_code: form.cohortCode || null,
+      })
+
+      const user = mapAuthUserToStore(authResponse?.user)
+      login(
+        {
+          ...user,
+          cohort: form.cohortCode || 'Bootcamp Pro',
+          profile: userProfile,
+        },
+        authResponse?.access_token || null
+      )
       navigate('/onboarding/goals')
-    }, 1200)
+    } catch (apiError) {
+      setError(apiError?.message || 'Unable to create account right now. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
+  const handleSSO = async (provider) => {
+    setLoading(true)
+    setError('')
+    setSsoMsg(`Connecting ${provider} demo identity...`)
+    try {
+      const authResponse = await ensureAccountSession({
+        fullName: `${provider} Learner`,
+        userEmail: `demo.${provider.toLowerCase()}@lumina.ai`,
+      })
+      const user = mapAuthUserToStore(authResponse?.user)
+      login(user, authResponse?.access_token || null)
+      navigate('/onboarding/goals')
+    } catch (apiError) {
+      setError(apiError?.message || `Unable to continue with ${provider}.`)
+    } finally {
+      setLoading(false)
+      setSsoMsg('')
+    }
+  }
   return (
     <main id="split_auth_container" className="flex-1 flex flex-col lg:flex-row w-full max-w-[1440px] mx-auto relative z-10">
 
@@ -224,6 +317,133 @@ const SignupPage = () => {
               </div>
             </div>
 
+            {/* Profile Details */}
+            <section className="rounded-[10px] p-4 space-y-4" style={{ background: 'rgba(15,23,42,0.55)', border: '1px solid #334155' }}>
+              <div>
+                <h3 className="text-sm font-semibold text-white">Profile for Adaptive Quizzes</h3>
+                <p className="text-[11px] mt-1" style={{ color: '#94a3b8' }}>
+                  We use this profile data to generate topic-wise quizzes for your Adaptive Quizzes page.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="target_role" className="block text-xs font-medium mb-1.5" style={{ color: '#cbd5e1' }}>
+                    Target Role
+                  </label>
+                  <select
+                    id="target_role"
+                    value={form.targetRole}
+                    onChange={(e) => update('targetRole', e.target.value)}
+                    className="w-full input-field rounded-[8px] py-2.5 px-3 text-sm text-white"
+                  >
+                    {roleOptions.map((role) => (
+                      <option key={role} value={role} style={{ background: '#1e293b' }}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="experience_level" className="block text-xs font-medium mb-1.5" style={{ color: '#cbd5e1' }}>
+                    Experience Level
+                  </label>
+                  <select
+                    id="experience_level"
+                    value={form.experienceLevel}
+                    onChange={(e) => update('experienceLevel', e.target.value)}
+                    className="w-full input-field rounded-[8px] py-2.5 px-3 text-sm text-white"
+                  >
+                    {experienceLevels.map((level) => (
+                      <option key={level} value={level} style={{ background: '#1e293b' }}>
+                        {level}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="weekly_hours" className="block text-xs font-medium mb-1.5" style={{ color: '#cbd5e1' }}>
+                    Weekly Study Hours
+                  </label>
+                  <input
+                    type="number"
+                    id="weekly_hours"
+                    min={1}
+                    max={60}
+                    value={form.weeklyHours}
+                    onChange={(e) => update('weeklyHours', e.target.value)}
+                    className="w-full input-field rounded-[8px] py-2.5 px-4 text-sm text-white placeholder:text-slate-600"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="content_language" className="block text-xs font-medium mb-1.5" style={{ color: '#cbd5e1' }}>
+                    Content Language
+                  </label>
+                  <select
+                    id="content_language"
+                    value={form.contentLanguage}
+                    onChange={(e) => update('contentLanguage', e.target.value)}
+                    className="w-full input-field rounded-[8px] py-2.5 px-3 text-sm text-white"
+                  >
+                    {['English (US)', 'Spanish', 'French', 'German'].map((language) => (
+                      <option key={language} value={language} style={{ background: '#1e293b' }}>
+                        {language}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="learning_style" className="block text-xs font-medium mb-1.5" style={{ color: '#cbd5e1' }}>
+                  Learning Style
+                </label>
+                <select
+                  id="learning_style"
+                  value={form.learningStyle}
+                  onChange={(e) => update('learningStyle', e.target.value)}
+                  className="w-full input-field rounded-[8px] py-2.5 px-3 text-sm text-white"
+                >
+                  {learningStyles.map((style) => (
+                    <option key={style} value={style} style={{ background: '#1e293b' }}>
+                      {style}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-2" style={{ color: '#cbd5e1' }}>
+                  Focus Topics
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {topicOptions.map((topic) => {
+                    const isSelected = form.focusTopics.includes(topic)
+                    return (
+                      <button
+                        key={topic}
+                        type="button"
+                        onClick={() => toggleFocusTopic(topic)}
+                        className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                        style={{
+                          background: isSelected ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.7)',
+                          border: `1px solid ${isSelected ? 'rgba(59,130,246,0.45)' : '#334155'}`,
+                          color: isSelected ? '#60a5fa' : '#cbd5e1',
+                        }}
+                      >
+                        {topic}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </section>
+
             {/* Terms checkbox */}
             <div className="flex items-start pt-2">
               <label className="flex items-start cursor-pointer">
@@ -256,9 +476,9 @@ const SignupPage = () => {
             )}
 
             {/* Submit */}
-            <button type="submit"
+            <button type="submit" disabled={loading}
               className="w-full primary-btn rounded-[8px] py-2.5 px-4 text-sm font-semibold text-white mt-2">
-              Create Account
+              {loading ? 'Creating Account...' : 'Create Account'}
             </button>
           </form>
 

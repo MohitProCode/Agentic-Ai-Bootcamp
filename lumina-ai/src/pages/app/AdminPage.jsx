@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Search, Filter, Plus, Users, ChevronLeft, ChevronRight, Check, X, MoreHorizontal, ChevronDown } from 'lucide-react'
+import { useState } from 'react'
+import { Search, Plus, Users, ChevronLeft, ChevronRight, Check, X, MoreHorizontal, ChevronDown } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { Avatar } from '../../components/ui/index'
 
@@ -68,6 +68,11 @@ const InviteModal = ({ onClose, onSend }) => {
   )
 }
 
+const AdminChartTooltip = ({ active, payload, label }) => {
+  if (active && payload?.length) return <div className="custom-tooltip">{label}: {payload[0].value}</div>
+  return null
+}
+
 const AdminPage = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [page, setPage] = useState(1)
@@ -106,11 +111,6 @@ const AdminPage = () => {
   const handleActivate = (id) => {
     setUsers(prev => prev.map(u => u.id === id ? { ...u, status: u.status === 'Active' ? 'Pending' : 'Active' } : u))
     showToast('User status updated!')
-  }
-
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload?.length) return <div className="custom-tooltip">{label}: {payload[0].value}</div>
-    return null
   }
 
   const statCards = [
@@ -263,7 +263,7 @@ const AdminPage = () => {
                   <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
                   <XAxis dataKey="time" tick={{ fill: '#475569', fontSize: 9 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: '#475569', fontSize: 9 }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<AdminChartTooltip />} />
                   <Area type="monotone" dataKey="logins" stroke="#3b82f6" fill="rgba(59,130,246,0.1)" strokeWidth={1.5} />
                 </AreaChart>
               </ResponsiveContainer>

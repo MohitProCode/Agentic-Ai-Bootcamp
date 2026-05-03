@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+httpx
+pydantic-settings
+crewai
+crewai-tools
+langchain
+langchain-community
+langchain-ollama
+chromadb
+sentence-transformers
+websockets

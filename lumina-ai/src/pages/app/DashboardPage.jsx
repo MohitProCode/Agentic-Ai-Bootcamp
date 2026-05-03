@@ -1,7 +1,20 @@
-import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import useStore from '../../store/useStore'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { luminaApi } from '../../api/luminaApi'
+import { mapDashboardToStore } from '../../api/mappers'
+
+const defaultConsistencyData = {
+  'Last 7 Days': [
+    { day: 'Mon', hours: 1.5 }, { day: 'Tue', hours: 2.0 }, { day: 'Wed', hours: 0.5 },
+    { day: 'Thu', hours: 3.0 }, { day: 'Fri', hours: 2.5 }, { day: 'Sat', hours: 1.0 }, { day: 'Sun', hours: 2.2 },
+  ],
+  'Last 30 Days': [
+    { day: 'W1', hours: 8 }, { day: 'W2', hours: 12 }, { day: 'W3', hours: 7 },
+    { day: 'W4', hours: 15 }, { day: 'W5', hours: 11 },
+  ],
+}
 
 // ─── Toast notification ───────────────────────
 const Toast = ({ msg, onClose }) => (
@@ -13,37 +26,72 @@ const Toast = ({ msg, onClose }) => (
   </div>
 )
 
+const DashboardChartTooltip = ({ active, payload, label }) => {
+  if (active && payload?.length) {
+    return <div className="custom-tooltip"><b>{label}</b><br />{payload[0].value} hours</div>
+  }
+  return null
+}
+
 const DashboardPage = () => {
+  const navigate = useNavigate()
   const user = useStore(s => s.user)
+  const setUser = useStore(s => s.setUser)
   const tasks = useStore(s => s.tasks)
+  const setTasks = useStore(s => s.setTasks)
   const toggleTask = useStore(s => s.toggleTask)
   const roadmap = useStore(s => s.roadmap)
+  const setRoadmap = useStore(s => s.setRoadmap)
   const [timeFilter, setTimeFilter] = useState('Last 7 Days')
   const [toast, setToast] = useState(null)
-
-  // Consistency data keyed by filter
-  const dataMap = {
-    'Last 7 Days': [
-      { day: 'Mon', hours: 1.5 }, { day: 'Tue', hours: 2.0 }, { day: 'Wed', hours: 0.5 },
-      { day: 'Thu', hours: 3.0 }, { day: 'Fri', hours: 2.5 }, { day: 'Sat', hours: 1.0 }, { day: 'Sun', hours: 2.2 },
-    ],
-    'Last 30 Days': [
-      { day: 'W1', hours: 8 }, { day: 'W2', hours: 12 }, { day: 'W3', hours: 7 },
-      { day: 'W4', hours: 15 }, { day: 'W5', hours: 11 },
-    ],
-  }
+  const [consistencyData, setConsistencyData] = useState(defaultConsistencyData)
 
   const showToast = (msg) => {
     setToast(msg)
     setTimeout(() => setToast(null), 2500)
   }
 
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload?.length) {
-      return <div className="custom-tooltip"><b>{label}</b><br />{payload[0].value} hours</div>
+  useEffect(() => {
+    const loadDashboard = async () => {
+      if (!user?.id || !user?.isAuthenticated) return
+      if (!String(user.id).startsWith('user_')) return
+      try {
+        const dashboard = await luminaApi.getDashboard(user.id)
+        const mapped = mapDashboardToStore(dashboard)
+        setUser(mapped.userPatch)
+        setTasks(mapped.tasks)
+        setRoadmap(mapped.roadmap)
+
+        if (mapped.consistency.length > 0) {
+          const weeklyBuckets = []
+          for (let index = 0; index < mapped.consistency.length; index += 7) {
+            const chunk = mapped.consistency.slice(index, index + 7)
+            const total = chunk.reduce((acc, item) => acc + Number(item.hours || 0), 0)
+            weeklyBuckets.push({ day: `W${weeklyBuckets.length + 1}`, hours: Number(total.toFixed(1)) })
+          }
+          setConsistencyData({
+            'Last 7 Days': mapped.consistency,
+            'Last 30 Days': weeklyBuckets.length ? weeklyBuckets : defaultConsistencyData['Last 30 Days'],
+          })
+        }
+      } catch (apiError) {
+        showToast(apiError?.message || 'Using local dashboard data. Backend sync unavailable.')
+      }
     }
-    return null
+
+    loadDashboard()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.isAuthenticated])
+
+  const handleTaskClick = (task) => {
+    if (!task.done && /quiz/i.test(task.title || '')) {
+      navigate('/quiz-checkin')
+      return
+    }
+    toggleTask(task.id)
   }
+
+  const chartData = useMemo(() => consistencyData[timeFilter] || [], [consistencyData, timeFilter])
 
   return (
     <main id="dashboard_main" className="flex-1 w-full max-w-[1440px] mx-auto relative z-10 px-6 py-8 overflow-y-auto">
@@ -102,7 +150,7 @@ const DashboardPage = () => {
                 {tasks.map(task => (
                   <div
                     key={task.id}
-                    onClick={() => toggleTask(task.id)}
+                    onClick={() => handleTaskClick(task)}
                     className={`selectable-card${task.required && !task.done ? ' selected' : ''} rounded-[12px] p-4 flex items-start gap-4 cursor-pointer transition-opacity ${task.done ? 'opacity-60' : 'opacity-100'}`}
                   >
                     <div className="mt-0.5 shrink-0">
@@ -130,7 +178,7 @@ const DashboardPage = () => {
             <section className="glass-panel rounded-[16px] border border-slate-700/50 flex flex-col">
               <div className="p-6 border-b border-slate-700/50 flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-white">Current Path</h2>
-                <Link to="/progress" className="text-xs font-medium text-blue-400 hover:text-blue-300">View Full Path</Link>
+                <Link to="/learning-path" className="text-xs font-medium text-blue-400 hover:text-blue-300">View Full Path</Link>
               </div>
               <div className="p-6 flex-1 relative">
                 <div className="absolute left-[39px] top-6 bottom-6 w-px z-0" style={{ background: '#1e293b' }} />
@@ -182,7 +230,7 @@ const DashboardPage = () => {
             </div>
             <div className="w-full h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dataMap[timeFilter]} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
                   <defs>
                     <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
@@ -192,7 +240,7 @@ const DashboardPage = () => {
                   <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
                   <XAxis dataKey="day" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<DashboardChartTooltip />} />
                   <Area type="monotone" dataKey="hours" stroke="#3b82f6" strokeWidth={3} fill="url(#areaGrad)"
                     dot={{ fill: '#0f172a', stroke: '#3b82f6', strokeWidth: 2, r: 4 }}
                     activeDot={{ r: 6, fill: '#0f172a', stroke: '#60a5fa', strokeWidth: 2 }} />
@@ -210,7 +258,7 @@ const DashboardPage = () => {
             {[
               { icon: 'fa-solid fa-book-open', label: 'Resources', to: '/resources', color: 'rgba(59,130,246,0.1)', iconClass: 'text-blue-400' },
               { icon: 'fa-solid fa-chart-pie', label: 'Progress', to: '/progress', color: 'rgba(168,85,247,0.1)', iconClass: 'text-purple-400' },
-              { icon: 'fa-solid fa-users', label: 'Community', to: null, color: 'rgba(16,185,129,0.1)', iconClass: 'text-emerald-400' },
+              { icon: 'fa-solid fa-route', label: 'Learning Path', to: '/learning-path', color: 'rgba(16,185,129,0.1)', iconClass: 'text-emerald-400' },
               { icon: 'fa-solid fa-certificate', label: 'Certificates', to: null, color: 'rgba(249,115,22,0.1)', iconClass: 'text-orange-400' },
             ].map(ql => ql.to ? (
               <Link key={ql.label} to={ql.to}

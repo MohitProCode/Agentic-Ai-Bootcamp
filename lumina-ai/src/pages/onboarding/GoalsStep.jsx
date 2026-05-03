@@ -1,15 +1,22 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useStore from '../../store/useStore'
+import { luminaApi } from '../../api/luminaApi'
 
 const GoalsStep = () => {
   const navigate = useNavigate()
   const setOnboardingGoals = useStore(s => s.setOnboardingGoals)
   const login = useStore(s => s.login)
+  const user = useStore(s => s.user)
 
   const [selectedRole, setSelectedRole] = useState('Software Engineer')
   const [selectedSkills, setSelectedSkills] = useState(['React & Next.js', 'TypeScript'])
   const [learningStyle, setLearningStyle] = useState('Project-based (Hands-on)')
+  const [targetTimeframe, setTargetTimeframe] = useState('6 Months (Recommended)')
+  const [contentLanguage, setContentLanguage] = useState('English (US)')
+  const [weeklyHours] = useState(15)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveNotice, setSaveNotice] = useState('')
 
   const roles = [
     { icon: 'fa-solid fa-code', title: 'Software Engineer', sub: 'Full-stack, Frontend, Backend', color: 'blue' },
@@ -26,13 +33,44 @@ const GoalsStep = () => {
     )
   }
 
-  const handleNext = () => {
-    setOnboardingGoals({ targetRole: selectedRole, skills: selectedSkills, learningStyle })
+  const handleNext = async () => {
+    const goalsPayload = {
+      targetRole: selectedRole,
+      skills: selectedSkills,
+      weeklyHours,
+      timeframe: targetTimeframe,
+      learningStyle,
+      contentLanguage,
+    }
+
+    setOnboardingGoals(goalsPayload)
+    setIsSaving(true)
+    setSaveNotice('')
+
+    if (user?.id) {
+      try {
+        await luminaApi.saveGoals({
+          user_id: user.id,
+          preferences: {
+            target_role: selectedRole,
+            focus_skills: selectedSkills,
+            weekly_hours: weeklyHours,
+            target_timeframe: targetTimeframe,
+            learning_style: learningStyle,
+            content_language: contentLanguage,
+          },
+        })
+      } catch (apiError) {
+        setSaveNotice(apiError?.message || 'Saved goals locally. Backend sync will retry in next step.')
+      }
+    }
+
+    setIsSaving(false)
     navigate('/onboarding/quiz')
   }
 
   const handleSkip = () => {
-    login({ name: 'Guest', email: 'guest@lumina.ai', isAuthenticated: true })
+    login({ id: 'guest_user', name: 'Guest', email: 'guest@lumina.ai', isAuthenticated: true })
     navigate('/dashboard')
   }
 
@@ -139,11 +177,11 @@ const GoalsStep = () => {
           <div>
             <label className="block text-sm font-medium text-white mb-4">Target Timeframe</label>
             <div className="relative">
-              <select className="w-full input-field rounded-[8px] py-2.5 px-4 text-sm appearance-none cursor-pointer">
-                <option value="3" style={{ background: '#1e293b' }}>3 Months (Intensive)</option>
-                <option value="6" style={{ background: '#1e293b' }} defaultValue>6 Months (Recommended)</option>
-                <option value="9" style={{ background: '#1e293b' }}>9 Months (Relaxed)</option>
-                <option value="12" style={{ background: '#1e293b' }}>12+ Months (Continuous Learning)</option>
+              <select value={targetTimeframe} onChange={(e) => setTargetTimeframe(e.target.value)} className="w-full input-field rounded-[8px] py-2.5 px-4 text-sm appearance-none cursor-pointer">
+                <option value="3 Months (Intensive)" style={{ background: '#1e293b' }}>3 Months (Intensive)</option>
+                <option value="6 Months (Recommended)" style={{ background: '#1e293b' }}>6 Months (Recommended)</option>
+                <option value="9 Months (Relaxed)" style={{ background: '#1e293b' }}>9 Months (Relaxed)</option>
+                <option value="12+ Months (Continuous Learning)" style={{ background: '#1e293b' }}>12+ Months (Continuous Learning)</option>
               </select>
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4" style={{ color: '#94a3b8' }}>
                 <i className="fa-solid fa-chevron-down text-xs" />
@@ -182,11 +220,11 @@ const GoalsStep = () => {
             <div>
               <label className="block text-sm font-medium text-white mb-2">Content Language</label>
               <div className="relative">
-                <select className="w-full input-field rounded-[8px] py-2.5 px-4 text-sm appearance-none cursor-pointer">
-                  <option value="en" style={{ background: '#1e293b' }}>English (US)</option>
-                  <option value="es" style={{ background: '#1e293b' }}>Spanish</option>
-                  <option value="fr" style={{ background: '#1e293b' }}>French</option>
-                  <option value="de" style={{ background: '#1e293b' }}>German</option>
+                <select value={contentLanguage} onChange={(e) => setContentLanguage(e.target.value)} className="w-full input-field rounded-[8px] py-2.5 px-4 text-sm appearance-none cursor-pointer">
+                  <option value="English (US)" style={{ background: '#1e293b' }}>English (US)</option>
+                  <option value="Spanish" style={{ background: '#1e293b' }}>Spanish</option>
+                  <option value="French" style={{ background: '#1e293b' }}>French</option>
+                  <option value="German" style={{ background: '#1e293b' }}>German</option>
                 </select>
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4" style={{ color: '#94a3b8' }}>
                   <i className="fa-solid fa-chevron-down text-xs" />
@@ -214,6 +252,9 @@ const GoalsStep = () => {
 
       {/* Footer Actions */}
       <div className="p-6 border-t border-slate-700/50 flex items-center justify-between rounded-b-[12px] flex-shrink-0" style={{ background: 'rgba(15,23,42,0.5)' }}>
+        {saveNotice && (
+          <div className="text-xs text-amber-300">{saveNotice}</div>
+        )}
         <button onClick={handleSkip} className="text-sm font-medium transition-colors hover:text-white" style={{ color: '#94a3b8' }}>
           Skip for now
         </button>
@@ -221,9 +262,9 @@ const GoalsStep = () => {
           <button onClick={() => navigate('/login')} className="secondary-btn rounded-[8px] py-2.5 px-6 text-sm font-medium" style={{ color: '#e2e8f0' }}>
             Back
           </button>
-          <button onClick={handleNext} className="primary-btn rounded-[8px] py-2.5 px-8 text-sm font-semibold text-white flex items-center gap-2">
-            Next Step
-            <i className="fa-solid fa-arrow-right text-xs" />
+          <button onClick={handleNext} disabled={isSaving} className="primary-btn rounded-[8px] py-2.5 px-8 text-sm font-semibold text-white flex items-center gap-2">
+            {isSaving ? 'Saving...' : 'Next Step'}
+            {!isSaving && <i className="fa-solid fa-arrow-right text-xs" />}
           </button>
         </div>
       </div>

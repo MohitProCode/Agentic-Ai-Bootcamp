@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Outlet, Link, useLocation, NavLink, useNavigate } from 'react-router-dom'
 import useStore from '../store/useStore'
 
@@ -44,8 +44,11 @@ const AppLayout = () => {
   // Nav links — Admin Panel only shows for admins
   const navLinks = [
     { to: '/dashboard', label: 'Main Dashboard' },
+    { to: '/quiz-checkin', label: 'Adaptive Quiz' },
+    { to: '/agents', label: '🤖 AI Agents', highlight: true },
     { to: '/resources',  label: 'Resources' },
     { to: '/progress',   label: 'Progress Tracking' },
+    { to: '/learning-path', label: 'Learning Path' },
     ...(isAdmin ? [{ to: '/admin', label: 'Admin Panel', adminOnly: true }] : []),
     { to: '/settings',   label: 'Settings' },
   ]
@@ -203,11 +206,12 @@ const AppLayout = () => {
 
                   {/* Menu items */}
                   {[
-                    { icon: 'fa-regular fa-user',  label: 'Profile',     to: '/settings' },
-                    { icon: 'fa-solid fa-sliders',  label: 'Settings',    to: '/settings' },
-                    { icon: 'fa-solid fa-chart-pie', label: 'My Progress', to: '/progress' },
-                    ...(isAdmin ? [{ icon: 'fa-solid fa-shield-halved', label: 'Admin Panel', to: '/admin', admin: true }] : []),
-                  ].map(item => (
+                  { icon: 'fa-regular fa-user',  label: 'Profile',     to: '/settings' },
+                  { icon: 'fa-solid fa-sliders',  label: 'Settings',    to: '/settings' },
+                  { icon: 'fa-solid fa-chart-pie', label: 'My Progress', to: '/progress' },
+                  { icon: 'fa-solid fa-route', label: 'Learning Path', to: '/learning-path' },
+                  ...(isAdmin ? [{ icon: 'fa-solid fa-shield-halved', label: 'Admin Panel', to: '/admin', admin: true }] : []),
+                ].map(item => (
                     <Link key={item.label} to={item.to} onClick={() => setShowProfile(false)}
                       className="px-4 py-2.5 flex items-center gap-3 hover:bg-white/[0.04] transition-colors"
                       style={{ color: item.admin ? '#fcd34d' : '#cbd5e1' }}>

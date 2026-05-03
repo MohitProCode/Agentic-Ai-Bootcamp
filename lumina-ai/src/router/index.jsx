@@ -1,4 +1,3 @@
-import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import useStore from '../store/useStore'
 
@@ -18,8 +17,11 @@ import PlanStep from '../pages/onboarding/PlanStep'
 
 // App Pages
 import DashboardPage from '../pages/app/DashboardPage'
+import AdaptiveQuizPage from '../pages/app/AdaptiveQuizPage'
 import ResourcesPage from '../pages/app/ResourcesPage'
 import ProgressPage from '../pages/app/ProgressPage'
+import LearningPathPage from '../pages/app/LearningPathPage'
+import AgentDashboard from '../pages/app/AgentDashboard'
 import AdminPage from '../pages/app/AdminPage'
 import SettingsPage from '../pages/app/SettingsPage'
 
@@ -81,8 +83,11 @@ const AppRouter = () => {
         {/* Protected App Routes */}
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/quiz-checkin" element={<AdaptiveQuizPage />} />
+          <Route path="/agents" element={<AgentDashboard />} />
           <Route path="/resources" element={<ResourcesPage />} />
           <Route path="/progress"  element={<ProgressPage />} />
+          <Route path="/learning-path" element={<LearningPathPage />} />
           <Route path="/admin"     element={<AdminRoute><AdminPage /></AdminRoute>} />
           <Route path="/settings"  element={<SettingsPage />} />
         </Route>
